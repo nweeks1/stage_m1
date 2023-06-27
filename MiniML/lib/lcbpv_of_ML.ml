@@ -124,7 +124,16 @@ and trans_expr e =
                         , body.eloc )
                     ]
                 , e.eloc ) )
-          , e.eloc ) ))
+          , e.eloc ) )
+    | Do stmt -> assert false
+    | BindMonadic (e1, e2) -> assert false
+    | Return e -> assert false
+    | If (e1, e2, e3) -> assert false
+    | Get -> assert false
+    | Set e -> assert false
+    | RunState (e1, e2) -> assert false
+    | LiftState e -> assert false
+    )
   , e.eloc )
 
 and trans_match_case case =
@@ -162,6 +171,7 @@ and trans_expr_ls ls = List.map trans_expr ls
 
 let rec trans_type t =
   ( (match t.etype with
+    | TypeMonadic x -> assert false
     | TypeInt -> Typ_App ((Typ_Int, t.tloc), [])
     | TypeBool -> Typ_App ((Typ_Bool, t.tloc), [])
     | TypeUnit -> Typ_App ((Typ_Unit, t.tloc), [])
@@ -202,7 +212,6 @@ let trans_def def =
          , loc ))
   | VariableDef newglb ->
     NewGlobal (Ins_Let (trans_var newglb.var, trans_expr newglb.init), loc)
-;;
 
 let trans_prog_node (glbvarls, program_items, last_expr) node =
   match node with
@@ -216,11 +225,59 @@ let trans_prog_node (glbvarls, program_items, last_expr) node =
     ( (Ins_Let ((newVarName, varloc), trans_expr e), varloc) :: glbvarls
     , program_items
     , (Expr_Var (newVarName, varloc), varloc) )
-;;
+
 
 let trans_prog p =
   let glbVar, progItemLs, last_expr =
     List.fold_left trans_prog_node ([], [], (Expr_Int 0, dummy_pos)) p
   in
   Prog (List.rev progItemLs @ [ Do (Blk (List.rev glbVar, last_expr, dummy_pos)) ])
-;;
+
+let rec sub_x var (s : statement) : statement = 
+  match s.snode with
+  | Stmt_return e -> {s with snode = Stmt_lift e}
+  | Stmt_let (var', s1, s2) -> 
+    assert (var' <> var);
+    {s with snode = Stmt_let (var', 
+                              sub_x var s1, 
+                              {sloc = s.sloc; 
+                              snode = Stmt_let (var, 
+                              {sloc=s.sloc; snode=Stmt_get}, sub_x var s2 )})}
+  | Stmt_if (e, s1, s2) -> 
+    {s with snode = Stmt_if (e, sub_x var s1, sub_x var s2)}
+  | Stmt_mut (var', e, s) -> 
+    assert (var' <> var);
+    {s with snode = Stmt_mut (var', e, sub_x var s)}
+  | Stmt_mut_change (var', e) ->
+    if var = var' then 
+      {s with snode = Stmt_set e}
+    else
+      s
+  | Stmt_get -> s 
+  | Stmt_set e -> s
+  | Stmt_lift e -> s
+
+  let rec trans_do stmt =
+   match stmt.snode with
+  | Stmt_return e -> 
+      {enode = Return e; eloc  = stmt.sloc}
+  | Stmt_let (var, s1, s2) -> 
+      {enode = 
+        BindMonadic (trans_do s1, 
+          ({enode=Lambda {arg = var; 
+                        body = trans_do s2};
+                         eloc = stmt.sloc}));
+           eloc = stmt.sloc}
+  | Stmt_if (e, s1, s2) ->
+    {enode = If (e, trans_do s1, trans_do s2); eloc = stmt.sloc}
+  | Stmt_mut (var, e, s) ->
+    {eloc = stmt.sloc;
+     enode = Binding {var = var; 
+               init = e;
+               content = {eloc = stmt.sloc;
+                enode = RunState (trans_do (sub_x var s), {eloc = stmt.sloc; enode = Variable var})}  
+        }}
+  | Stmt_mut_change (var, e) -> assert false (* Should disappear with sub_x*)
+  | Stmt_get -> {eloc = stmt.sloc; enode = Get}
+  | Stmt_set e -> {eloc = stmt.sloc; enode = Set e}
+  | Stmt_lift e -> {eloc = stmt.sloc; enode = LiftState e}

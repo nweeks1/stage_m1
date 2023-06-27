@@ -15,6 +15,8 @@ type pre_etype =
       { to_build : etype
       ; parameters : etype list
       }
+  | TypeMonadic of pre_etype
+  | TypeState of pre_etype * (pre_etype -> pre_etype) * pre_etype
 
 and etype =
   { etype : pre_etype
@@ -103,6 +105,14 @@ and pre_expr =
       { to_match : expr
       ; cases : match_case list
       }
+  | Do of statement
+  | BindMonadic of expr * expr
+  | Return of expr
+  | If of expr * expr * expr
+  | Get
+  | Set of expr
+  | RunState of expr * expr
+  | LiftState of expr
 
 and match_case =
   { pattern : pattern
@@ -124,3 +134,16 @@ and pre_pattern =
       { constructor_ident : string
       ; content : pattern list (* Pas Profond *)
       }
+and statement = 
+  { snode : pre_statement
+  ; sloc : Autobill.Misc.position
+  }
+and pre_statement = 
+  | Stmt_return of expr
+  | Stmt_let of variable * statement * statement
+  | Stmt_if of expr * statement * statement
+  | Stmt_mut of variable * expr * statement
+  | Stmt_mut_change of variable * expr 
+  | Stmt_get
+  | Stmt_set of expr
+  | Stmt_lift of expr
