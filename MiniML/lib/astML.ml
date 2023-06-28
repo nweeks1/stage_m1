@@ -113,6 +113,9 @@ and pre_expr =
   | Set of expr
   | RunState of expr * expr
   | LiftState of expr
+  | ThrowEx of expr 
+  | RunCatch of expr 
+  | LiftEx of expr
 
 and match_case =
   { pattern : pattern
@@ -146,4 +149,7 @@ and pre_statement =
   | Stmt_mut_change of variable * expr 
   | Stmt_get
   | Stmt_set of expr
+  | Stmt_lift_st of expr
+  | Stmt_throw of expr
   | Stmt_lift of expr
+  
