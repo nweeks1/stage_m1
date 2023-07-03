@@ -69,6 +69,7 @@ and expr =
 and pre_expr =
   | Litteral of litteral
   | Variable of variable
+  | UnitExpr
   | CallUnary of
       { op : Autobill.Lcbpv.prim_mon_op
       ; arg : expr option
@@ -114,8 +115,9 @@ and pre_expr =
   | RunState of expr * expr
   | LiftState of expr
   | ThrowEx of expr 
-  | RunCatch of expr 
   | LiftEx of expr
+  | RunCatch of expr 
+  | ForM of expr* expr
 
 and match_case =
   { pattern : pattern
@@ -152,4 +154,6 @@ and pre_statement =
   | Stmt_lift_st of expr
   | Stmt_throw of expr
   | Stmt_lift of expr
+  | Stmt_break
+  | Stmt_for of variable * expr * statement
   
