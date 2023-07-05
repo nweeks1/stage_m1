@@ -15,13 +15,15 @@ type pre_etype =
       { to_build : etype
       ; parameters : etype list
       }
-  | TypeMonadic of pre_etype
-  | TypeState of pre_etype * (pre_etype -> pre_etype) * pre_etype
+  | TypeMonadic of etype 
+  | TypeState of etype * (etype -> etype) * etype 
 
 and etype =
   { etype : pre_etype
   ; tloc : Autobill.Misc.position
   }
+
+type effect = Ground | State of effect | Except of effect
 
 type variable =
   { basic_ident : string
@@ -69,7 +71,6 @@ and expr =
 and pre_expr =
   | Litteral of litteral
   | Variable of variable
-  | UnitExpr
   | CallUnary of
       { op : Autobill.Lcbpv.prim_mon_op
       ; arg : expr option
@@ -106,18 +107,18 @@ and pre_expr =
       { to_match : expr
       ; cases : match_case list
       }
-  | Do of statement
-  | BindMonadic of expr * expr
-  | Return of expr
+  | Do of statement 
+  | BindMonadic of expr * expr * effect 
+  | Return of expr * effect 
   | If of expr * expr * expr
   | Get
   | Set of expr
   | RunState of expr * expr
-  | LiftState of expr
+  | LiftState of expr * effect
   | ThrowEx of expr 
-  | LiftEx of expr
-  | RunCatch of expr 
-  | ForM of expr* expr
+  | LiftEx of expr * effect
+  | RunCatch of expr
+  | ForM of expr * expr
 
 and match_case =
   { pattern : pattern
@@ -133,27 +134,29 @@ and pattern =
 and pre_pattern =
   | LitteralPattern of litteral
   | VarPattern of string
-  | WildcardPattern 
+  | WildcardPattern
   | TuplePattern of pattern list (* Pas Profond *)
   | ConstructorPattern of
       { constructor_ident : string
       ; content : pattern list (* Pas Profond *)
       }
-and statement = 
+
+and statement =
   { snode : pre_statement
   ; sloc : Autobill.Misc.position
   }
-and pre_statement = 
+
+and pre_statement =
   | Stmt_return of expr
   | Stmt_let of variable * statement * statement
   | Stmt_if of expr * statement * statement
   | Stmt_mut of variable * expr * statement
-  | Stmt_mut_change of variable * expr 
+  | Stmt_mut_change of variable * expr
   | Stmt_get
   | Stmt_set of expr
   | Stmt_lift_st of expr
   | Stmt_throw of expr
   | Stmt_lift of expr
   | Stmt_break
+  | Stmt_continue
   | Stmt_for of variable * expr * statement
-  
