@@ -59,7 +59,8 @@ and make_binary_closure args op eloc =
 
 and sub_x var (s : statement) : statement =
   match s.snode with
-  | Stmt_return e -> { s with snode = Stmt_lift e }
+  | Stmt_pure e -> {s with snode = Stmt_lift e}
+  | Stmt_return _ -> s (* TODO *)
   | Stmt_let (var', s1, s2) ->
     assert (var' <> var);
     { s with
@@ -91,7 +92,8 @@ and sub_x var (s : statement) : statement =
 and trans_do stmt =
   let rec transL stmt =
     match stmt.snode with
-    | Stmt_return e -> { stmt with snode = Stmt_lift e }
+    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
+    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transL s1, transL s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transL s) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transL s1, transL s2) }
@@ -109,7 +111,8 @@ and trans_do stmt =
             ; enode = ThrowEx { eloc = stmt.sloc; enode = Litteral Unit }
             }
       }
-    | Stmt_return e -> { stmt with snode = Stmt_lift e }
+    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
+    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transC s1, transC s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transC s) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transC s1, transC s2) }
@@ -120,7 +123,8 @@ and trans_do stmt =
     match stmt.snode with
     | Stmt_break ->
       { stmt with snode = Stmt_throw { eloc = stmt.sloc; enode = Litteral Unit } }
-    | Stmt_return e -> { stmt with snode = Stmt_lift e }
+    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
+    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transB s1, transB s2) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transB s1, transB s2) }
     | Stmt_for (var, e, s) -> { stmt with snode = Stmt_for (var, e, transL s) }
@@ -128,6 +132,7 @@ and trans_do stmt =
   in
   let rec transD stmt eff =
     match stmt.snode with
+    | Stmt_pure e -> e
     | Stmt_return e -> { enode = Return (e, eff); eloc = stmt.sloc }
     | Stmt_let (var, s1, s2) ->
       { enode =
@@ -149,13 +154,15 @@ and trans_do stmt =
                 { eloc = stmt.sloc
                 ; enode =
                     RunState
-                      ( transD (sub_x var s) (State eff)
+                      ( transD
+                          (sub_x var s)
+                          (State ({ etype = TypeUnit; tloc = stmt.sloc }, eff))
                       , { eloc = stmt.sloc; enode = Variable var } )
                 }
                 (* State + effets de ^ *)
             }
       }
-    | Stmt_mut_change (var, e) -> assert false (* Should disappear with sub_x*)
+    | Stmt_mut_change (_, _) -> assert false (* Should disappear with sub_x*)
     | Stmt_get -> { eloc = stmt.sloc; enode = Get }
     | Stmt_set e -> { eloc = stmt.sloc; enode = Set e }
     | Stmt_lift_st e -> { eloc = stmt.sloc; enode = LiftState (e, eff) }
@@ -177,7 +184,13 @@ and trans_do stmt =
                               { eloc = stmt.sloc
                               ; enode =
                                   RunCatch
-                                    (transD (transC (transB s)) (Except (Except eff)))
+                                    (transD
+                                       (transC (transB s))
+                                       (Except
+                                          ( { etype = TypeUnit; tloc = stmt.sloc }
+                                          , Except
+                                              ({ etype = TypeUnit; tloc = stmt.sloc }, eff)
+                                          )))
                               }
                           }
                     } )
@@ -189,16 +202,21 @@ and trans_do stmt =
   let rec transR stmt =
     match stmt.snode with
     | Stmt_return e -> { stmt with snode = Stmt_throw e }
+    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transR s1, transR s2) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transR s1, transR s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transR s) }
-    | Stmt_mut_change (var, e) -> stmt
+    | Stmt_mut_change (_, _) -> stmt
     | Stmt_break -> stmt
     | Stmt_continue -> stmt
     | Stmt_for (var, e, s) -> { stmt with snode = Stmt_for (var, e, transR s) }
     | _ -> assert false (* not reachable yet *)
   in
-  { enode = RunCatch (transD (transR stmt) (Except Ground)); eloc = stmt.sloc }
+  { enode =
+      RunCatch
+        (transD (transR stmt) (Except ({ etype = TypeUnit; tloc = stmt.sloc }, Ground)))
+  ; eloc = stmt.sloc
+  }
 
 and trans_expr e =
   ( (match e.enode with
@@ -269,19 +287,19 @@ and trans_expr e =
                  , e.eloc ) )
            , e.eloc ) )
      | Do stmt ->
-       let pre_expr, loc = trans_expr (trans_do stmt) in
+       let pre_expr, _ = trans_expr (trans_do stmt) in
        pre_expr
-     | BindMonadic (e1, e2, eff) -> assert false
-     | Return (e, eff) -> assert false
-     | If (e1, e2, e3) -> assert false
+     | BindMonadic _ -> assert false
+     | Return _ -> assert false
+     | If _ -> assert false
      | Get -> assert false
-     | Set e -> assert false
-     | RunState (e1, e2) -> assert false
-     | LiftState (e, eff) -> assert false
-     | ThrowEx e -> assert false
-     | RunCatch e -> assert false
-     | LiftEx (e, eff) -> assert false
-     | ForM (e1, e2) -> assert false)
+     | Set _ -> assert false
+     | RunState _ -> assert false
+     | LiftState _ -> assert false
+     | ThrowEx _ -> assert false
+     | RunCatch _ -> assert false
+     | LiftEx _ -> assert false
+     | ForM _ -> assert false)
   , e.eloc )
 
 and trans_match_case case =
@@ -319,7 +337,7 @@ and trans_expr_ls ls = List.map trans_expr ls
 
 let rec trans_type t =
   ( (match t.etype with
-     | TypeMonadic x -> assert false
+     | TypeMonadic _ -> assert false
      | TypeInt -> Typ_App ((Typ_Int, t.tloc), [])
      | TypeBool -> Typ_App ((Typ_Bool, t.tloc), [])
      | TypeUnit -> Typ_App ((Typ_Unit, t.tloc), [])
@@ -336,8 +354,7 @@ let rec trans_type t =
                    , return_type.tloc )
                    :: [ trans_type arg ] )
              , t.tloc )
-           ] )
-     | TypeState (e1, m, e2) -> assert false)
+           ] ))
   , t.tloc )
 
 and trans_type_ls ls = List.map trans_type ls

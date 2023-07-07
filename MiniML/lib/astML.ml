@@ -15,15 +15,17 @@ type pre_etype =
       { to_build : etype
       ; parameters : etype list
       }
-  | TypeMonadic of etype 
-  | TypeState of etype * (etype -> etype) * etype 
+  | TypeMonadic of effect * etype
+
+and effect =
+  | Ground
+  | State of etype * effect
+  | Except of etype * effect
 
 and etype =
   { etype : pre_etype
   ; tloc : Autobill.Misc.position
   }
-
-type effect = Ground | State of effect | Except of effect
 
 type variable =
   { basic_ident : string
@@ -107,15 +109,15 @@ and pre_expr =
       { to_match : expr
       ; cases : match_case list
       }
-  | Do of statement 
-  | BindMonadic of expr * expr * effect 
-  | Return of expr * effect 
+  | Do of statement
+  | BindMonadic of expr * expr * effect
+  | Return of expr * effect
   | If of expr * expr * expr
   | Get
   | Set of expr
   | RunState of expr * expr
   | LiftState of expr * effect
-  | ThrowEx of expr 
+  | ThrowEx of expr
   | LiftEx of expr * effect
   | RunCatch of expr
   | ForM of expr * expr
@@ -147,6 +149,7 @@ and statement =
   }
 
 and pre_statement =
+  | Stmt_pure of expr
   | Stmt_return of expr
   | Stmt_let of variable * statement * statement
   | Stmt_if of expr * statement * statement
