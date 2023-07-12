@@ -59,7 +59,7 @@ and make_binary_closure args op eloc =
 
 and sub_x var (s : statement) : statement =
   match s.snode with
-  | Stmt_pure e -> {s with snode = Stmt_lift e}
+  | Stmt_pure e -> { s with snode = Stmt_lift e }
   | Stmt_return _ -> s (* TODO *)
   | Stmt_let (var', s1, s2) ->
     assert (var' <> var);
@@ -89,11 +89,38 @@ and sub_x var (s : statement) : statement =
     }
   | _ -> s
 
+and remove_mut_change_set stmt =
+  match stmt.snode with
+  | Stmt_mut_change_set (var, e, s) ->
+    { snode =
+        Stmt_let
+          ( { basic_ident = "_"; vloc = stmt.sloc }
+          , { snode = Stmt_mut_change (var, e); sloc = stmt.sloc }
+          , remove_mut_change_set s )
+    ; sloc = stmt.sloc
+    }
+  | Stmt_pure _ -> stmt
+  | Stmt_return _ -> stmt
+  | Stmt_let (var, s1, s2) ->
+    { stmt with
+      snode = Stmt_let (var, remove_mut_change_set s1, remove_mut_change_set s2)
+    }
+  | Stmt_if (e, s1, s2) ->
+    { stmt with snode = Stmt_if (e, remove_mut_change_set s1, remove_mut_change_set s2) }
+  | Stmt_mut (var, e, s) ->
+    { stmt with snode = Stmt_mut (var, e, remove_mut_change_set s) }
+  | Stmt_mut_change _ -> stmt
+  | Stmt_break -> stmt
+  | Stmt_continue -> stmt
+  | Stmt_for (var, e, s) ->
+    { stmt with snode = Stmt_for (var, e, remove_mut_change_set s) }
+  | _ -> assert false
+
 and trans_do stmt =
   let rec transL stmt =
     match stmt.snode with
-    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
-    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
+    | Stmt_pure e -> { stmt with snode = Stmt_lift e }
+    | Stmt_return _ -> assert false (*No early return in for loop *)
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transL s1, transL s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transL s) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transL s1, transL s2) }
@@ -111,8 +138,8 @@ and trans_do stmt =
             ; enode = ThrowEx { eloc = stmt.sloc; enode = Litteral Unit }
             }
       }
-    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
-    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
+    | Stmt_pure e -> { stmt with snode = Stmt_lift e }
+    | Stmt_return _ -> assert false (* No early return in for loop *) 
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transC s1, transC s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transC s) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transC s1, transC s2) }
@@ -123,8 +150,8 @@ and trans_do stmt =
     match stmt.snode with
     | Stmt_break ->
       { stmt with snode = Stmt_throw { eloc = stmt.sloc; enode = Litteral Unit } }
-    | Stmt_return e -> { stmt with snode = Stmt_lift e } (* TODO *)
-    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
+    | Stmt_return _ -> assert false (* No early return in for loop*)
+    | Stmt_pure e -> { stmt with snode = Stmt_lift e }
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transB s1, transB s2) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transB s1, transB s2) }
     | Stmt_for (var, e, s) -> { stmt with snode = Stmt_for (var, e, transL s) }
@@ -163,6 +190,7 @@ and trans_do stmt =
             }
       }
     | Stmt_mut_change (_, _) -> assert false (* Should disappear with sub_x*)
+    | Stmt_mut_change_set _ -> assert false
     | Stmt_get -> { eloc = stmt.sloc; enode = Get }
     | Stmt_set e -> { eloc = stmt.sloc; enode = Set e }
     | Stmt_lift_st e -> { eloc = stmt.sloc; enode = LiftState (e, eff) }
@@ -202,11 +230,12 @@ and trans_do stmt =
   let rec transR stmt =
     match stmt.snode with
     | Stmt_return e -> { stmt with snode = Stmt_throw e }
-    | Stmt_pure e -> {stmt with snode = Stmt_lift e}
+    | Stmt_pure e -> { stmt with snode = Stmt_lift e }
     | Stmt_let (var, s1, s2) -> { stmt with snode = Stmt_let (var, transR s1, transR s2) }
     | Stmt_if (e, s1, s2) -> { stmt with snode = Stmt_if (e, transR s1, transR s2) }
     | Stmt_mut (var, e, s) -> { stmt with snode = Stmt_mut (var, e, transR s) }
     | Stmt_mut_change (_, _) -> stmt
+    | Stmt_mut_change_set _ -> stmt
     | Stmt_break -> stmt
     | Stmt_continue -> stmt
     | Stmt_for (var, e, s) -> { stmt with snode = Stmt_for (var, e, transR s) }
@@ -214,7 +243,9 @@ and trans_do stmt =
   in
   { enode =
       RunCatch
-        (transD (transR stmt) (Except ({ etype = TypeUnit; tloc = stmt.sloc }, Ground)))
+        (transD
+           (transR (remove_mut_change_set stmt))
+           (Except ({ etype = TypeUnit; tloc = stmt.sloc }, Ground)))
   ; eloc = stmt.sloc
   }
 
