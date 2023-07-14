@@ -169,19 +169,12 @@ and fmt_block_inner fmt b = match b.snode with
          fmt_variable x
          fmt_expr e
          fmt_block_inner s
-  | Stmt_mut_change (x, e, s) ->
+  | Stmt_mut_change_set (x, e, s) ->
     fprintf fmt "%a := %a;@,%a"
       fmt_variable x
       fmt_expr e
       fmt_block_inner s
-
-  (* | Stmt_get -> _ *)
-  (* | Stmt_set _ -> _ *)
-  (* | Stmt_early_return _ -> _ *)
-  (* | Stmt_lift_st _ -> _ *)
-  (* | Stmt_throw _ -> _ *)
-  (* | Stmt_lift _ -> _ *)
-
+  | Stmt_early_return e -> fprintf fmt "return %a" fmt_expr e
   | Stmt_break -> fprintf fmt "break"
   | Stmt_continue -> fprintf fmt "continue"
   | Stmt_for (x, e, s)
@@ -189,6 +182,17 @@ and fmt_block_inner fmt b = match b.snode with
          fmt_variable x
          fmt_expr e
          fmt_block s
+
+  | Stmt_mut_change (x,e) ->
+    fprintf fmt "%a := %a"
+      fmt_variable x
+      fmt_expr e
+
+  | Stmt_get -> fprintf fmt "get"
+  | Stmt_set e -> fprintf fmt "set %a" fmt_expr e
+  | Stmt_lift_st e -> fprintf fmt "liftST %a" fmt_expr e
+  | Stmt_throw e -> fprintf fmt "throw %a" fmt_expr e
+  | Stmt_lift e -> fprintf fmt "liftEXN %a" fmt_expr e
 
 
 and fmt_case fmt case =

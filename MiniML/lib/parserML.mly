@@ -17,9 +17,9 @@
 %token LSimpleArrow
 %token LLet LFun LIn LType LRec LOf LMatch LWith LUnderScore LIf LThen LElse
 
-%token LDo LOpenCurly LCloseCurly LReturn LLeftArrow LAssign LFor LBreak LContinue
-%token LGet LSet LColumnEqual LRunST LLiftST
-%token LSt LExn LM
+%token LDo LPure LReturn LOpenCurly LCloseCurly LLeftArrow LAssign LFor LBreak LContinue
+//%token LGet LSet LRunST LLiftST
+%token LSt LExn LM LOpenBracket LCloseBracket
 
 %token LEqual LInf LMult LOr LTOr LTAnd LAnd LAdd LDiv LModulo LSub LNot
 
@@ -234,23 +234,23 @@ expr:
 }
 
 effect:
-| LSt LOpenParen s = etype LSemiColon eff = effect
+| LSt LOpenPar s = etype LSemiColon eff = effect
   { State (s, eff) }
 
-| LExn LOpenParen e = etype LSemiColon eff = effect
+| LExn LOpenPar e = etype LSemiColon eff = effect
   { Except (e, eff) }
 
 | LM
   { Ground }
 
 block:
-| e = expr ; LSemiColon? {
+| LPure e = expr ; LSemiColon? {
   { snode = Stmt_return e;
-    sloc = position $startpos(e) $endpos($2)
+    sloc = position $startpos(e) $endpos(e)
   }
 }
 
-| LLet x = variable; LLeftArrow ; LDo LOpenCurly s = block LCloseCurly ; LSemiColon; rest = block {
+| LLet x = variable; LLeftArrow ; LOpenCurly s = block LCloseCurly ; LSemiColon; rest = block {
   { snode = Stmt_let (x,s,rest);
     sloc = position $startpos($1) $endpos(rest)
   }
@@ -270,7 +270,7 @@ block:
 }
 
 | x = variable LAssign e = expr LSemiColon rest = block {
-  { snode = Stmt_mut_change(x,e);
+  { snode = Stmt_mut_change_set(x,e,rest);
     sloc = position $startpos(x) $endpos(e)
   }
 }
@@ -427,3 +427,9 @@ etype:
   ; tloc = position $startpos(hd) $endpos(tail)
   }
   }
+| LM ; LOpenBracket;  eff = effect ; LCloseBracket;  LOpenPar;  t = etype;  LClosePar
+    { {
+        etype = TypeMonadic (eff,t);
+        tloc = position $startpos($1) $endpos($7)
+       }
+    }

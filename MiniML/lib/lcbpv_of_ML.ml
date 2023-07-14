@@ -321,6 +321,7 @@ and trans_expr e =
      | Do stmt ->
        let pre_expr, _ = trans_expr (trans_do stmt) in
        pre_expr
+
      | BindMonadic _ -> assert false
      | Return _ -> assert false
      | If _ -> assert false
@@ -332,6 +333,7 @@ and trans_expr e =
      | RunCatch _ -> assert false
      | LiftEx _ -> assert false
      | ForM _ -> assert false)
+
   , e.eloc )
 
 and trans_match_case case =
