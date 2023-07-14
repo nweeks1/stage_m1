@@ -28,6 +28,18 @@ let rec fmt_type fmt t =
       construct.parameters
       fmt_type
       construct.to_build
+  | TypeMonadic (eff, t) ->
+    fprintf fmt "M[%a](%a)" fmt_eff eff fmt_type t
+
+and fmt_eff fmt = function
+  | Ground -> ()
+  | State (t,Ground) -> fprintf fmt "ST(%a)" fmt_type t
+  | Except (t,Ground) -> fprintf fmt "EXN(%a)" fmt_type t
+ | State (t,eff) -> fprintf fmt "ST(%a);%a" fmt_type t fmt_eff eff
+ | Except (t,eff) -> fprintf fmt "EXN(%a);%a" fmt_type t fmt_eff eff
+
+
+
 ;;
 
 let fmt_unary_op fmt op =
@@ -124,6 +136,60 @@ let rec fmt_expr fmt exp =
       to_match
       (pp_print_list ~pp_sep:pp_print_cut fmt_case)
       cases
+  | Do s -> fprintf fmt "do %a" fmt_block s
+  | BindMonadic (x, f, eff) -> fprintf fmt "bind[%a] %a %a" fmt_eff eff fmt_expr x fmt_expr f
+  | Return (e, eff) -> fprintf fmt "pure[%a] %a" fmt_eff eff fmt_expr e
+  | If (e1, e2, e3) -> fprintf fmt "if! %a then %a else %a" fmt_expr e1 fmt_expr e2 fmt_expr e3
+  | Get -> fprintf fmt "get"
+  | Set x -> fprintf fmt "set %a" fmt_expr x
+  | RunState (e1, e2) -> fprintf fmt "runST %a %a" fmt_expr e1 fmt_expr e2
+  | LiftState (e, eff) -> fprintf fmt "liftST[%a] %a" fmt_eff eff fmt_expr e
+  | ThrowEx e -> fprintf fmt "throw %a" fmt_expr e
+  | LiftEx (e, eff) -> fprintf fmt "liftEXN[%a] %a" fmt_eff eff fmt_expr e
+  | RunCatch e -> fprintf fmt "runEXN %a" fmt_expr e
+  | ForM (e1, e2) -> fprintf fmt "forM %a %a" fmt_expr e1 fmt_expr e2
+
+and fmt_block fmt b = fprintf fmt "@[<v 0>{@[<v 2>@,%a@]@,}@]" fmt_block_inner b
+
+and fmt_block_inner fmt b = match b.snode with
+  | Stmt_pure e
+  | Stmt_return e -> fprintf fmt "pure %a" fmt_expr e
+  | Stmt_let (x, s, s')
+    -> fprintf fmt "let %a = do %a;@,%a"
+         fmt_variable x
+         fmt_block s
+         fmt_block_inner s'
+  | Stmt_if (e, s1, s2)
+    -> fprintf fmt "if %a then {@[<v 2>@,%a@]@,} else{@[<v 2>@,%a@]@,};"
+         fmt_expr e
+         fmt_block_inner s1
+         fmt_block_inner s2
+  | Stmt_mut (x, e, s)
+    -> fprintf fmt "let mut %a = %a;@,%a"
+         fmt_variable x
+         fmt_expr e
+         fmt_block_inner s
+  | Stmt_mut_change (x, e, s) ->
+    fprintf fmt "%a := %a;@,%a"
+      fmt_variable x
+      fmt_expr e
+      fmt_block_inner s
+
+  (* | Stmt_get -> _ *)
+  (* | Stmt_set _ -> _ *)
+  (* | Stmt_early_return _ -> _ *)
+  (* | Stmt_lift_st _ -> _ *)
+  (* | Stmt_throw _ -> _ *)
+  (* | Stmt_lift _ -> _ *)
+
+  | Stmt_break -> fprintf fmt "break"
+  | Stmt_continue -> fprintf fmt "continue"
+  | Stmt_for (x, e, s)
+    -> fprintf fmt "for %a in %a do %a"
+         fmt_variable x
+         fmt_expr e
+         fmt_block s
+
 
 and fmt_case fmt case =
   fprintf fmt "@[| %a -> %a @]" fmt_pattern case.pattern fmt_expr case.consequence

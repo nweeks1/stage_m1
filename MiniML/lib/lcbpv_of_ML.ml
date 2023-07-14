@@ -226,6 +226,7 @@ and trans_do stmt =
       }
     | Stmt_break -> assert false
     | Stmt_continue -> assert false
+    | Stmt_early_return _ -> assert false
   in
   let rec transR stmt =
     match stmt.snode with

@@ -19,6 +19,7 @@
 
 %token LDo LOpenCurly LCloseCurly LReturn LLeftArrow LAssign LFor LBreak LContinue
 %token LGet LSet LColumnEqual LRunST LLiftST
+%token LSt LExn LM
 
 %token LEqual LInf LMult LOr LTOr LTAnd LAnd LAdd LDiv LModulo LSub LNot
 
@@ -232,7 +233,17 @@ expr:
   }
 }
 
-block :
+effect:
+| LSt LOpenParen s = etype LSemiColon eff = effect
+  { State (s, eff) }
+
+| LExn LOpenParen e = etype LSemiColon eff = effect
+  { Except (e, eff) }
+
+| LM
+  { Ground }
+
+block:
 | e = expr ; LSemiColon? {
   { snode = Stmt_return e;
     sloc = position $startpos(e) $endpos($2)
@@ -293,6 +304,7 @@ block :
   ; sloc = position $startpos($1) $endpos($1)
   }
 }
+
 
 match_case :
 | pattern = pattern ;LSimpleArrow; consequence = expr{
