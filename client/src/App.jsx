@@ -5,7 +5,7 @@ import { StreamLanguage } from "@codemirror/language"
 import { miniML } from "../language/mllike"
 
 import billPrompts from "../data/billPrompt"
-import "../../MiniML/_build/default/bin/main.bc.js"
+import "../../_build/default/MiniML/bin/main.bc.js"
 import { EditorView } from "codemirror"
 import { StateField, StateEffect } from "@codemirror/state"
 import { Decoration } from "@codemirror/view"

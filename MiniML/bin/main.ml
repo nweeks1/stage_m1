@@ -3,7 +3,6 @@ open Autobill
 open Cst_intf
 open Intern_intf
 open Sort_intf
-open Reduction_intf
 open TypeInfer_intf
 open MiniML
 open Autobill.Misc
@@ -100,7 +99,7 @@ let _ =
          try
             let prog  = internalize (convert_to_machine_code cst) in
             let prog = polarity_inference prog in
-            let prog, post_con = type_infer ~trace:false prog in
+            let prog, _ = type_infer ~trace:false prog in
             let res = string_of_full_ast prog in
             object%js
               val resultat = Js.string res

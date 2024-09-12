@@ -11,13 +11,17 @@
 %token <AstML.pre_etype>LParseType
 
 
-%token LOpenPar LClosePar 
+%token LOpenPar LClosePar
 %token LSemiColon LDoubleSemiColon LRightAngleBraket LLeftAngleBraket
 %token LTupleInfixe LConsInfixe 
 %token LSimpleArrow
 %token LLet LFun LIn LType LRec LOf LMatch LWith LUnderScore LIf LThen LElse
 
-%token LEqual LInf LMult LOr LTOr LTAnd  LAnd LAdd LDiv LModulo LSub LNot
+%token LDo LPure LReturn LOpenCurly LCloseCurly LLeftArrow LAssign LFor LBreak LContinue
+//%token LGet LSet LRunST LLiftST
+%token LSt LExn LM LOpenBracket LCloseBracket
+
+%token LEqual LInf LMult LOr LTOr LTAnd LAnd LAdd LDiv LModulo LSub LNot
 
 %start <prog> prog
 %%
@@ -223,6 +227,85 @@ expr:
   }
 } 
 
+| LDo ; LOpenCurly ; b = block ; LCloseCurly {
+  { enode = Do b;
+    eloc = position $startpos($1) $endpos($4)
+  }
+}
+
+effect:
+| LSt LOpenPar s = etype LSemiColon eff = effect
+  { State (s, eff) }
+
+| LExn LOpenPar e = etype LSemiColon eff = effect
+  { Except (e, eff) }
+
+| LM
+  { Ground }
+
+block:
+| LPure e = expr ; LSemiColon? {
+  { snode = Stmt_return e;
+    sloc = position $startpos(e) $endpos(e)
+  }
+}
+
+| LLet x = variable; LLeftArrow ; LOpenCurly s = block LCloseCurly ; LSemiColon; rest = block {
+  { snode = Stmt_let (x,s,rest);
+    sloc = position $startpos($1) $endpos(rest)
+  }
+}
+
+| LLet x = variable; LLeftArrow ; e = expr ; LSemiColon; rest = block {
+  let s = {snode = Stmt_return e; sloc = position $startpos(e) $endpos(e)} in
+  { snode = Stmt_let (x,s,rest)
+  ; sloc = position $startpos($1) $endpos(rest)
+  }
+}
+
+| LLet x = variable LAssign e = expr LSemiColon rest = block {
+  { snode = Stmt_mut (x,e,rest);
+    sloc = position $startpos($1) $endpos(rest)
+  }
+}
+
+| x = variable LAssign e = expr LSemiColon rest = block {
+  { snode = Stmt_mut_change_set(x,e,rest);
+    sloc = position $startpos(x) $endpos(e)
+  }
+}
+
+| LIf e = expr LThen s1 = block LElse s2 = block {
+  { snode = Stmt_if (e,s1,s2);
+    sloc = position $startpos($1) $endpos(s2)
+  }
+}
+
+| LReturn ; e = expr {
+  { snode = Stmt_early_return (e);
+    sloc = position $startpos($1) $endpos(e)
+  }
+}
+
+| LFor ; x = variable ; LIn ; e = expr ; LDo ; LOpenCurly ; s = block ; LCloseCurly {
+  { snode = Stmt_for (x,e,s);
+    sloc = position $startpos($1) $endpos($8)
+  }
+}
+
+| LBreak {
+  { snode = Stmt_break
+  ; sloc = position $startpos($1) $endpos($1)
+  }
+}
+
+| LContinue {
+  { snode = Stmt_continue
+  ; sloc = position $startpos($1) $endpos($1)
+  }
+}
+
+
 match_case :
 | pattern = pattern ;LSimpleArrow; consequence = expr{
     { pattern ; consequence ; 
@@ -344,3 +427,9 @@ etype:
   ; tloc = position $startpos(hd) $endpos(tail)
   }
   }
+| LM ; LOpenBracket;  eff = effect ; LCloseBracket;  LOpenPar;  t = etype;  LClosePar
+    { {
+        etype = TypeMonadic (eff,t);
+        tloc = position $startpos($1) $endpos($7)
+       }
+    }

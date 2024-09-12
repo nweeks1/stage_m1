@@ -5,7 +5,7 @@ const dotenv = require("dotenv");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cors = require('cors');
-const ocaml = require("../MiniML/_build/default/bin/main.bc.js"); 
+const ocaml = require("../_build/default/MiniML/bin/main.bc.js");
 
 dotenv.config();
 
